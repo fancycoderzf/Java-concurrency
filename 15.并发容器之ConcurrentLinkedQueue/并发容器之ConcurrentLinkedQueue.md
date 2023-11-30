@@ -29,7 +29,7 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 
 
-![1.ConcurrentLinkedQueue初始化状态.png](http://upload-images.jianshu.io/upload_images/2615789-a3dbf8f54bb3452e.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![1.ConcurrentLinkedQueue初始化状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/ConcurrentLinkedQueue%E5%88%9D%E5%A7%8B%E5%8C%96%E7%8A%B6%E6%80%81.png)
 
 
 
@@ -105,7 +105,7 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 先从**单线程执行的角度**看起，分析offer 1的过程。第1行代码会对是否为null进行判断，为null的话就直接抛出空指针异常，第2行代码将e包装成一个Node类，第3行为for循环，只有初始化条件没有循环结束条件，这很符合CAS的“套路”，在循环体CAS操作成功会直接return返回，如果CAS操作失败的话就在for循环中不断重试直至成功。这里实例变量t被初始化为tail，p被初始化为t即tail。为了方便下面的理解，**p被认为队列真正的尾节点，tail不一定指向对象真正的尾节点，因为在ConcurrentLinkedQueue中tail是被延迟更新的**，具体原因我们慢慢来看。代码走到第3行的时候，t和p都分别指向初始化时创建的item域为null，next域为null的Node0。第4行变量q被赋值为null，第5行if判断为true，在第7行使用casNext将插入的Node设置成当前队列尾节点p的next节点，如果CAS操作失败，此次循环结束在下次循环中进行重试。CAS操作成功走到第8行，此时p==t，if判断为false,直接return true返回。如果成功插入1的话，此时ConcurrentLinkedQueue的状态如下图所示：
 
-![2.offer 1后队列的状态.png](http://upload-images.jianshu.io/upload_images/2615789-f2509bec71a8dc33.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![2.offer 1后队列的状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/offer%201%E5%90%8E%E9%98%9F%E5%88%97%E7%9A%84%E7%8A%B6%E6%80%81.png)
 
 如图，此时队列的尾节点应该为Node1,而tail指向的节点依然还是Node0,因此可以说明tail是延迟更新的。那么我们继续来看offer 2的时候的情况，很显然此时第4行q指向的节点不为null了，而是指向Node1,第5行if判断为false,第11行if判断为false,代码会走到第13行。好了，**再插入节点的时候我们会问自己这样一个问题？上面已经解释了tail并不是指向队列真正的尾节点，那么在插入节点的时候，我们是不是应该最开始做的就是找到队列当前的尾节点在哪里才能插入？**那么第13行代码就是**找出队列真正的尾节点**。
 
@@ -114,11 +114,11 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 	p = (p != t && t != (t = tail)) ? t : q;
 
 我们来分析一下这行代码，如果这段代码在**单线程环境**执行时，很显然由于p==t,此时p会被赋值为q,而q等于`Node<E> q = p.next`，即Node1。在第一次循环中指针p指向了队列真正的队尾节点Node1，那么在下一次循环中第4行q指向的节点为null，那么在第5行中if判断为true,那么在第7行依然通过casNext方法设置p节点的next为当前新增的Node,接下来走到第8行，这个时候p!=t，第8行if判断为true,会通过`casTail(t, newNode)`将当前节点Node设置为队列的队尾节点,此时的队列状态示意图如下图所示：
-![3.队列offer 2后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-6f8fe58d7a83fe61.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![3.队列offer 2后的状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E9%98%9F%E5%88%97offer%202%E5%90%8E%E7%9A%84%E7%8A%B6%E6%80%81.png)
 
 
 **tail指向的节点由Node0改变为Node2**,这里的casTail失败不需要重试的原因是，offer代码中主要是通过p的next节点q(`Node<E> q = p.next`)决定后面的逻辑走向的，当casTail失败时状态示意图如下：
-![4.队列进行入队操作后casTail失败后的状态图.png](http://upload-images.jianshu.io/upload_images/2615789-3b07de9df192dfc7.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![4.队列进行入队操作后casTail失败后的状态图.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E9%98%9F%E5%88%97%E8%BF%9B%E8%A1%8C%E5%85%A5%E9%98%9F%E6%93%8D%E4%BD%9C%E5%90%8EcasTail%E5%A4%B1%E8%B4%A5%E5%90%8E%E7%9A%84%E7%8A%B6%E6%80%81%E5%9B%BE.png)
 
 
 如图，**如果这里casTail设置tail失败即tail还是指向Node0节点的话，无非就是多循环几次通过13行代码定位到队尾节点**。
@@ -141,7 +141,7 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 
 
-![5.线程A和线程B有可能的执行时序.png](http://upload-images.jianshu.io/upload_images/2615789-9fd7db3a6c9372ff.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![5.线程A和线程B有可能的执行时序.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E7%BA%BF%E7%A8%8BA%E5%92%8C%E7%BA%BF%E7%A8%8BB%E6%9C%89%E5%8F%AF%E8%83%BD%E7%9A%84%E6%89%A7%E8%A1%8C%E6%97%B6%E5%BA%8F.png)
 
 如图，假设线程A此时读取了变量t，线程B刚好在这个时候offer一个Node后，此时会修改tail指针,那么这个时候线程A再次执行t=tail时t会指向另外一个节点，很显然线程A前后两次读取的变量t指向的节点不相同，即`t != (t = tail)`为true,并且由于t指向节点的变化`p != t`也为true，此时该行代码的执行结果为p和t最新的t指针指向了同一个节点，并且此时t也是队列真正的对尾节点。那么，现在已经定位到队列真正的队尾节点，就可以执行offer操作了。
 
@@ -181,14 +181,14 @@ poll方法源码如下：
 我们还是先站在**单线程的角度**去理清该方法的基本逻辑。假设ConcurrentLinkedQueue初始状态如下图所示：
 
 
-![6.队列初始状态.png](http://upload-images.jianshu.io/upload_images/2615789-450e7301fd19e6df.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![6.队列初始状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E9%98%9F%E5%88%97%E5%88%9D%E5%A7%8B%E7%8A%B6%E6%80%81.png)
 
 
 参数offer时的定义，我们还是先将**变量p作为队列要删除真正的队头节点，h（head）指向的节点并不一定是队列的队头节点**。先来看poll出Node1时的情况，由于`p=h=head`，参照上图，很显然此时p指向的Node1的数据域不为null,在第4行代码中`item!=null`判断为true后接下来通过`casItem`将Node1的数据域设置为null。如果CAS设置失败则此次循环结束等待下一次循环进行重试。若第4行执行成功进入到第5行代码，此时p和h都指向Node1,第5行if判断为false,然后直接到第7行return回Node1的数据域1，方法运行结束，此时的队列状态如下图。
 
 
 
-![7.队列出队操作后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-c3c45ac89c461ab5.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![7.队列出队操作后的状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E9%98%9F%E5%88%97%E5%87%BA%E9%98%9F%E6%93%8D%E4%BD%9C%E5%90%8E%E7%9A%84%E7%8A%B6%E6%80%81.png)
 
 
 下面继续从队列中poll，很显然当前h和p指向的Node1的数据域为null，那么第一件事就是要**定位准备删除的队头节点(找到数据域不为null的节点)**。
@@ -200,7 +200,7 @@ poll方法源码如下：
 
 
 
-![8.经过一次循环后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-c4deb3237eefb777.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![8.经过一次循环后的状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E7%BB%8F%E8%BF%87%E4%B8%80%E6%AC%A1%E5%BE%AA%E7%8E%AF%E5%90%8E%E7%9A%84%E7%8A%B6%E6%80%81.png)
 
 
 进行下一次循环，第4行的操作同上述，当前假设第4行中casItem设置成功，由于p已经指向了Node2,而h还依旧指向Node1,此时第5行的if判断为true，然后执行`updateHead(h, ((q = p.next) != null) ? q : p)`，此时q指向的Node3，所有传入updateHead方法的分别是指向Node1的h引用和指向Node3的q引用。updateHead方法的源码为：
@@ -212,7 +212,7 @@ poll方法源码如下：
 
 该方法主要是通过`casHead`将队列的head指向Node3,并且通过 `h.lazySetNext`将Node1的next域指向它自己。最后在第7行代码中返回Node2的值。此时队列的状态如下图所示：
 
-![9.Node2从队列中出队后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-5a93cb7a44f40745.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![9.Node2从队列中出队后的状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/Node2%E4%BB%8E%E9%98%9F%E5%88%97%E4%B8%AD%E5%87%BA%E9%98%9F%E5%90%8E%E7%9A%84%E7%8A%B6%E6%80%81.png)
 
 
 
@@ -269,9 +269,9 @@ Node1的next域指向它自己，head指向了Node3。如果队列为空队列�
 > **offer->poll->offer**
 
 在offer方法的第11行代码`if (p == q)`，能够让if判断为true的情况为p指向的节点为**哨兵节点**，而什么时候会构造哨兵节点呢？在对poll方法的讨论中，我们已经找到了答案，即**当head指向的节点的item域为null时会寻找真正的队头节点，等到待插入的节点插入之后，会更新head，并且将原来head指向的节点设置为哨兵节点。**假设队列初始状态如下图所示：
-![10.offer和poll相互影响分析时队列初始状态.png](http://upload-images.jianshu.io/upload_images/2615789-70b0af25bced807a.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![10.offer和poll相互影响分析时队列初始状态.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/offer%E5%92%8Cpoll%E7%9B%B8%E4%BA%92%E5%BD%B1%E5%93%8D%E5%88%86%E6%9E%90%E6%97%B6%E9%98%9F%E5%88%97%E5%88%9D%E5%A7%8B%E7%8A%B6%E6%80%81.png)
 因此在线程A执行offer时，线程B执行poll就会存在如下一种情况：
-![11.线程A和线程B可能存在的执行时序.png](http://upload-images.jianshu.io/upload_images/2615789-cf872ba6fdd99099.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![11.线程A和线程B可能存在的执行时序.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E7%BA%BF%E7%A8%8BA%E5%92%8C%E7%BA%BF%E7%A8%8BB%E5%8F%AF%E8%83%BD%E5%AD%98%E5%9C%A8%E7%9A%84%E6%89%A7%E8%A1%8C%E6%97%B6%E5%BA%8F.png)
 
 
 
@@ -283,7 +283,7 @@ Node1的next域指向它自己，head指向了Node3。如果队列为空队列�
 
 
 
-![12.线程B进行poll后队列的状态图.png](http://upload-images.jianshu.io/upload_images/2615789-d0d2d16b16c11802.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+![12.线程B进行poll后队列的状态图.png](https://github.com/fancycoderzf/Java-concurrency/blob/master/15.%E5%B9%B6%E5%8F%91%E5%AE%B9%E5%99%A8%E4%B9%8BConcurrentLinkedQueue/%E7%BA%BF%E7%A8%8BB%E8%BF%9B%E8%A1%8Cpoll%E5%90%8E%E9%98%9F%E5%88%97%E7%9A%84%E7%8A%B6%E6%80%81%E5%9B%BE.png)
 
 
 此时线程A在执行判断`if (p == q)`时就为true,会继续执行` p = (t != (t = tail)) ? t : head;`，由于tail指针没有发生改变所以p被赋值为head,重新从head开始完成插入操作。
